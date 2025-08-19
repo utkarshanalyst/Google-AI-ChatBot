@@ -75,10 +75,10 @@ PERSIST_DIRECTORY = "./chroma_db"
 schema_file_path = r"C:\Users\UtkarshSrivastava\OneDrive - DILYTICS TECHNOLOGIES PVT LTD\Documents\Google AI ChatBot\Full_Procurement_Schema.yaml" # <<<--- YAHAN APNA PATH CHECK KAREIN AUR UPDATE KAREIN
 
 # Set environment variable for authentication for Google Cloud Libraries
-if os.path.exists(SERVICE_ACCOUNT_KEY_PATH):
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = SERVICE_ACCOUNT_KEY_PATH
+if os.path.exists(SERVICE_ACCOUNT_KEY_FILE):
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = SERVICE_ACCOUNT_KEY_FILE
 else:
-    st.error(f"❌ Service account key file not found at: {SERVICE_ACCOUNT_KEY_PATH}. Please set GOOGLE_APPLICATION_CREDENTIALS environment variable or correct the path.")
+    st.error(f"❌ Service account key file not found at: {SERVICE_ACCOUNT_KEY_FILE}. Please set GOOGLE_APPLICATION_CREDENTIALS environment variable or correct the path.")
     st.stop() # Stop execution if credentials are not found
 
 
