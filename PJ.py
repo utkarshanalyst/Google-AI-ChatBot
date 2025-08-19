@@ -68,8 +68,8 @@ DATASET_ID = os.environ.get("BQ_DATASET_ID", "PROCUREMENT_DATA") # For BigQuery
 
 # --- Document Chatbot Specific Paths ---
 DOCUMENT_PATHS = [
-    r"C:\Users\UtkarshSrivastava\OneDrive - DILYTICS TECHNOLOGIES PVT LTD\Documents\Google AI ChatBot\DiLytics Procurement Insight Solution Overview v1.0 1.pdf", # <<<--- YAHAN APNA PATH CHECK KAREIN AUR UPDATE KAREIN
-    r"C:\Users\UtkarshSrivastava\OneDrive - DILYTICS TECHNOLOGIES PVT LTD\Documents\Google AI ChatBot\Dilytics Procuremnt Insights Mertics and Data Logic Draft A.pdf" # <<<--- YAHAN APNA PATH CHECK KAREIN AUR UPDATE KAREIN
+    "DiLytics Procurement Insight Solution Overview v1.0 1.pdf",
+    "Dilytics Procuremnt Insights Mertics and Data Logic Draft A.pdf"
 ]
 PERSIST_DIRECTORY = "./chroma_db"
 schema_file_path = "Dilytics Procurement Insight Solution Overview v1.0 1.pdf"
