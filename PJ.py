@@ -87,12 +87,25 @@ DOCUMENT_PATHS = [
 PERSIST_DIRECTORY = "./chroma_db"
 schema_file_path = "Full_Procurement_Schema.yaml"
 
-# Set environment variable for authentication for Google Cloud Libraries
-if os.path.exists(SERVICE_ACCOUNT_KEY_FILE):
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = SERVICE_ACCOUNT_KEY_FILE
-else:
-    st.error(f"❌ Service account key file not found at: {SERVICE_ACCOUNT_KEY_FILE}. Please set GOOGLE_APPLICATION_CREDENTIALS environment variable or correct the path.")
-    st.stop() # Stop execution if credentials are not found
+import json
+from google.oauth2 import service_account
+import streamlit as st
+import os
+import tempfile
+
+# 1️⃣ Secret se JSON load karo
+service_account_info = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
+
+# 2️⃣ Credentials create karo
+credentials = service_account.Credentials.from_service_account_info(service_account_info)
+
+# 3️⃣ (Optional) Agar library ko GOOGLE_APPLICATION_CREDENTIALS chahiye
+with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+    json.dump(service_account_info, f)
+    temp_path = f.name
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
+
 
 
 # --- Cached Resources for performance ---
