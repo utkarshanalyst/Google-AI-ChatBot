@@ -72,7 +72,7 @@ DOCUMENT_PATHS = [
     "Dilytics Procuremnt Insights Mertics and Data Logic Draft A.pdf"
 ]
 PERSIST_DIRECTORY = "./chroma_db"
-schema_file_path = "Dilytics Procurement Insight Solution Overview v1.0 1.pdf"
+schema_file_path = "Full_Procurement_Schema.yaml"
 
 # Set environment variable for authentication for Google Cloud Libraries
 if os.path.exists(SERVICE_ACCOUNT_KEY_FILE):
