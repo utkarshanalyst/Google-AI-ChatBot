@@ -17,6 +17,15 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
 import streamlit as st
 
+# ✅ Secret check (sabse upar rakho)
+with st.sidebar:
+    st.write("✅ Secret present:", "GCP_SERVICE_ACCOUNT" in st.secrets)
+    try:
+        _ = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
+        st.success("GCP_SERVICE_ACCOUNT loaded & valid JSON")
+    except Exception as e:
+        st.error(f"Secret missing/invalid JSON: {e}")
+
 # --- Streamlit Page Configuration (Always at the very top) ---
 st.set_page_config(page_title="Dilytics Procurement Insights Chatbot", layout="wide")
 
@@ -51,20 +60,21 @@ import streamlit as st
 
 # Check if running in Streamlit Cloud and get credentials from secrets.toml
 # Otherwise, use the local path for development.
-if "gcp_service_account" in st.secrets:
-    SERVICE_ACCOUNT_KEY_FILE = "gcp_service_account.json"
-    service_account_info = st.secrets["gcp_service_account"]
-    with open(SERVICE_ACCOUNT_KEY_FILE, "w") as f:
-        json.dump(dict(service_account_info), f)
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = SERVICE_ACCOUNT_KEY_FILE
+# Load service account from secrets (Cloud) OR local file (Dev)
+if "GCP_SERVICE_ACCOUNT" in st.secrets:
+    # Cloud: read from Secrets (multiline JSON)
+    service_account_info = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
+    # Optional: if any lib relies on GOOGLE_APPLICATION_CREDENTIALS, write to /tmp
+    with open("/tmp/gcp_key.json", "w") as f:
+        json.dump(service_account_info, f)
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/tmp/gcp_key.json"
 else:
-    # Use your local path for development
-    SERVICE_ACCOUNT_KEY_FILE = "vertex-ai-462816-eb7fff935f48.json"
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = SERVICE_ACCOUNT_KEY_FILE
+    # Local dev fallback: point to your downloaded JSON file path
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "vertex-ai-462816-c5f33c6dc69a.json"
 
-PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "vertex-ai-462816")
-LOCATION = os.environ.get("GCP_LOCATION", "us-central1") # Ensure this matches your Vertex AI model location
-DATASET_ID = os.environ.get("BQ_DATASET_ID", "PROCUREMENT_DATA") # For BigQuery
+PROJECT_ID = "vertex-ai-462816"
+LOCATION   = "us-central1"
+DATASET_ID = "PROCUREMENT_DATA"
 
 # --- Document Chatbot Specific Paths ---
 DOCUMENT_PATHS = [
