@@ -59,7 +59,7 @@ if "gcp_service_account" in st.secrets:
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = SERVICE_ACCOUNT_KEY_FILE
 else:
     # Use your local path for development
-    SERVICE_ACCOUNT_KEY_FILE = "vertex-ai-462816-eb7fff935f48.json"
+    SERVICE_ACCOUNT_KEY_FILE = "vertex-ai-462816-c5f33c6dc69a.json"
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = SERVICE_ACCOUNT_KEY_FILE
 
 PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "vertex-ai-462816")
