@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "vertex-ai-462816",
+  "private_key_id": "eb7fff935f4831cca946c65f49af12a7aa30bd4e",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCl2T5lmlYaPPYW\nIDUpDKYlWe9sK5ic6BNFSxWsc/tSqJSJZMpzbE8/mqTfpob2T2z94TS73JISpsmw\nlUCNSnkf1FBw6psaJ0oOraqwpHRdYjAMg6xGOJVmxpb81Uv79d/2x1PYFLnd0hnu\ncoBMcUtgLK1rcqpbwFzzCpHgnV+iOT6XzZBZdZ1bpxEOfjFv0k5dCKV9pT3ZmpI1\n3LNRGwKrx/bNxei1JtwmnnH5VBH62ZPLzZj+glk/T9MFMlJena/8ypFfSGD5vvTg\nD/sO0s8zkj1KoXOd4LLhJUxcs1VVQtYplCN78XNbs7CRCQlfh9MXC/CylQtUrsMb\nspKJrys3AgMBAAECggEAQddnQCrvd+cvw0TyFePhqf50YLtGETTJQb83UYmSAxTO\nM2WCQiSDqbqZLfkMp4iMupXHu7UrgKAafjIiuHUSdSJy9QEOpmlmq0Ei/JGtaM1s\nSeuUXyRjm7PHiYScb+EDExO7I5PG3ltk1Bc8/BwWUo4qIvgYzegmfo55r3SK3Pm8\nmf9Y3jntkqGL0Jtizo0JrW9M9PJUbSFZWHPMKtgsKLQloSiiRqCDGZ7f3ca0npw+\n8GXVTrCP4tbOwq+6wABpNBVo0a8zVCbg/G2NcTYtmRMkwu81Y6yxm3XjWvMk4Wg5\nO966ULvz6YLhL/MCxa31XaGtlNLAbC6BuZeRMzlLYQKBgQDijcqfN7xjWb6YYAbN\nrBfynQMCqQI7Llh6ncSuaA9v2529hzz1V1isVxcIywAVH/tOoUAvPRduBWP//T7K\nN+hG/RU5SS3P/YhDh0or0sVOT2t3BHaAYE7gtc52sY84eFn8M9P+B3UfEdplnDEc\ngD7XvhGJPKPrzpKuDPMBcDrYXwKBgQC7Z5WKI0AqUWssP3yIF4+JC7devWxFP02Z\nebLdWZCIUNdBT67Wci9NwqPA0swBDaF3rNFTv+dXbPDx2lTPIoZ7++J6ZSwrNqM6\nq+PhO6m0dOuVJ8O2bLgLRnsnSZbDLoag+DX19LqgJ7LQaLqyAagUIIeHGV69pw/2\nCwQtttv8KQKBgQDW7McFpx2Mbw42hhrOMW4CltvNQULBnCUKJfP5tPS4HHOX4t18\nruGLlY9fox2v7Mg/fxBiACXjFTAaIUjZFJLCDcR9tSPGBnKoBYfi7TCLKyL7JPu6\nrCMIYNG+npINc3eCoDSD8NU2pXw4GyYoMK3tg/4k4KdtxGo4vkYm3i6lJwKBgDaB\nYQ/lQsNMHOSorlqSp6+PVczbQQM+7x3lNG2GoC/Ve1XGjC5Y1YNDSgdKCAWCZmT9\nQYCfPvTBfa6J9sKr4vtqfitlA5yp7n2hAs0+YhRXMTGXeCe1pS26WRVLJOstvABT\nULZxcFomUa6l1y7wpmb8Mw7LBTAZx92ixJtbJM5JAoGAEM5jcBzZ/+llkglLDAdH\nyt0CX1M/BBLnk2EwcQC/FLu+t5NT/aTSxO/qaCtKyXoUsOEBURpi5tjZyjr6FsNZ\n37jrBU5VATcLY/+DozbKtEn8xCCdFj2lnAVe+KJsGJE5jKoKEDYGk3yMwOlXh8Qo\nLf5D72wt5FdMwD4Mr2PKfo8=\n-----END PRIVATE KEY-----\n",
+  "client_email": "procurement-agent@vertex-ai-462816.iam.gserviceaccount.com",
+  "client_id": "117368779053948377163",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/procurement-agent%40vertex-ai-462816.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
