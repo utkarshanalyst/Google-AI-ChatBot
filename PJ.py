@@ -17,7 +17,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
 import streamlit as st
 
-<<<<<<< HEAD
 with st.sidebar:
     st.write("✅ Secret present:", "GCP_SERVICE_ACCOUNT" in st.secrets)
     if "GCP_SERVICE_ACCOUNT" in st.secrets:
@@ -29,16 +28,6 @@ with st.sidebar:
     else:
         st.error("❌ Secret NOT found in Streamlit Cloud")
 
-=======
-# ✅ Secret check (sabse upar rakho)
-with st.sidebar:
-    st.write("✅ Secret present:", "GCP_SERVICE_ACCOUNT" in st.secrets)
-    try:
-        _ = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
-        st.success("GCP_SERVICE_ACCOUNT loaded & valid JSON")
-    except Exception as e:
-        st.error(f"Secret missing/invalid JSON: {e}")
->>>>>>> 0a1d102d5fc676f53ec742cae3697d397de8b4bd
 
 # --- Streamlit Page Configuration (Always at the very top) ---
 st.set_page_config(page_title="Dilytics Procurement Insights Chatbot", layout="wide")
