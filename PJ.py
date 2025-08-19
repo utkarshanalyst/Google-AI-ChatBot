@@ -55,7 +55,7 @@ if "gcp_service_account" in st.secrets:
     SERVICE_ACCOUNT_KEY_FILE = "gcp_service_account.json"
     service_account_info = st.secrets["gcp_service_account"]
     with open(SERVICE_ACCOUNT_KEY_FILE, "w") as f:
-        json.dump(service_account_info, f)
+        json.dump(dict(service_account_info), f)
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = SERVICE_ACCOUNT_KEY_FILE
 else:
     # Use your local path for development
