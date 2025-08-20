@@ -96,7 +96,7 @@ import os
 import tempfile
 
 # 1️⃣ Secret se JSON load karo
-service_account_info = st.secrets["gcp_service_account"]
+service_account_info = st.secrets["GCP_SERVICE_ACCOUNT"]
 
 # 2️⃣ Credentials create karo
 credentials = service_account.Credentials.from_service_account_info(service_account_info)
