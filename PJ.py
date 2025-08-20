@@ -44,6 +44,7 @@ if "plot_chart_type" not in st.session_state:
 # --- 🔐 Global Configurations and Secret Handling ---
 # --- 🔐 Global Configurations and Secret Handling ---
 # --- 🔐 Global Configurations and Secret Handling ---
+# --- 🔐 Global Configurations and Secret Handling ---
 temp_path = None
 try:
     if "gcp_service_account" in st.secrets:
