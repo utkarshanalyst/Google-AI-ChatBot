@@ -71,7 +71,7 @@ if "GCP_SERVICE_ACCOUNT" in st.secrets:
 
     # Optional: if any lib relies on GOOGLE_APPLICATION_CREDENTIALS, write to /tmp
     with open("/tmp/gcp_key.json", "w") as f:
-        json.dump(service_account_info, f)
+        json.dump(dict(service_account_info), f)
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/tmp/gcp_key.json"
 else:
     # Local dev fallback: point to your downloaded JSON file path
