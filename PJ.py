@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from io import BytesIO
+import json
+import tempfile
+from google.oauth2 import service_account
 
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain_community.vectorstores import Chroma
@@ -17,35 +20,20 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
 import streamlit as st
 
-with st.sidebar:
-    st.write("✅ Secret present:", "GCP_SERVICE_ACCOUNT" in st.secrets)
-    if "GCP_SERVICE_ACCOUNT" in st.secrets:
-        try:
-            _ = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
-            st.success("Secret loaded & valid JSON ✅")
-        except Exception as e:
-            st.error(f"Secret found but invalid JSON ❌: {e}")
-    else:
-        st.error("❌ Secret NOT found in Streamlit Cloud")
-
-
 # --- Streamlit Page Configuration (Always at the very top) ---
 st.set_page_config(page_title="Dilytics Procurement Insights Chatbot", layout="wide")
 
 # --- ABSOLUTE TOP: ALL SESSION STATE INITIALIZATIONS ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
-
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
 if "last_db_df" not in st.session_state:
     st.session_state.last_db_df = None
 if "last_db_query" not in st.session_state:
     st.session_state.last_db_query = None
 if "last_db_plot_question" not in st.session_state:
     st.session_state.last_db_plot_question = None
-
 if "plot_x_col" not in st.session_state:
     st.session_state.plot_x_col = None
 if "plot_y_col" not in st.session_state:
@@ -53,29 +41,25 @@ if "plot_y_col" not in st.session_state:
 if "plot_chart_type" not in st.session_state:
     st.session_state.plot_chart_type = None
 
-
-# --- 🔐 Global Configurations ---
-# IMPORTANT: Ensure this path is correct for your system.
-
-import os
-import json
-import streamlit as st
-
-# Check if running in Streamlit Cloud and get credentials from secrets.toml
-# Otherwise, use the local path for development.
-# Load service account from secrets (Cloud) OR local file (Dev)
-if "GCP_SERVICE_ACCOUNT" in st.secrets:
-    # Cloud: read from Secrets (multiline JSON)
-    service_account_info = st.secrets["GCP_SERVICE_ACCOUNT"]
-   
-
-    # Optional: if any lib relies on GOOGLE_APPLICATION_CREDENTIALS, write to /tmp
-    with open("/tmp/gcp_key.json", "w") as f:
+# --- 🔐 Global Configurations and Secret Handling ---
+# Use consistent key: `gcp_service_account` for Streamlit Secrets
+if "gcp_service_account" in st.secrets:
+    # Cloud: read from Secrets (TOML table is loaded as a dict)
+    service_account_info = st.secrets["gcp_service_account"]
+    
+    # Write to a temporary file for libraries that need GOOGLE_APPLICATION_CREDENTIALS
+    with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
         json.dump(dict(service_account_info), f)
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/tmp/gcp_key.json"
+        temp_path = f.name
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
+    
+    # Create credentials object
+    credentials = service_account.Credentials.from_service_account_info(service_account_info)
 else:
     # Local dev fallback: point to your downloaded JSON file path
+    st.warning("Running in local mode. Ensure 'vertex-ai-462816-c5f33c6dc69a.json' is available.")
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "vertex-ai-462816-c5f33c6dc69a.json"
+    credentials = None
 
 PROJECT_ID = "vertex-ai-462816"
 LOCATION   = "us-central1"
@@ -89,26 +73,12 @@ DOCUMENT_PATHS = [
 PERSIST_DIRECTORY = "./chroma_db"
 schema_file_path = "Full_Procurement_Schema.yaml"
 
-import json
-from google.oauth2 import service_account
-import streamlit as st
-import os
-import tempfile
-
-# 1️⃣ Secret se JSON load karo
-service_account_info = st.secrets["GCP_SERVICE_ACCOUNT"]
-
-# 2️⃣ Credentials create karo
-credentials = service_account.Credentials.from_service_account_info(service_account_info)
-
-# 3️⃣ (Optional) Agar library ko GOOGLE_APPLICATION_CREDENTIALS chahiye
-with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
-    json.dump(dict(service_account_info), f)
-    temp_path = f.name
-
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
-
-
+with st.sidebar:
+    st.write("✅ Secret present:", "gcp_service_account" in st.secrets)
+    if "gcp_service_account" in st.secrets:
+        st.success("Secret loaded successfully ✅")
+    else:
+        st.error("❌ Secret NOT found in Streamlit Cloud")
 
 # --- Cached Resources for performance ---
 @st.cache_resource(show_spinner="⏳ Initializing AI Models and Databases...")
@@ -251,7 +221,7 @@ def auto_cast_fix(sql_query, error_msg):
 # --- Helper to save plots to bytes ---
 def _save_plot_to_bytes(fig: plt.Figure) -> BytesIO:
     buf = BytesIO()
-    fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1, dpi=300) # Increased DPI for better quality
+    fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1, dpi=300)
     buf.seek(0)
     plt.close(fig)
     return buf
@@ -259,34 +229,31 @@ def _save_plot_to_bytes(fig: plt.Figure) -> BytesIO:
 # --- generate_plot_from_df (Revised for readability) ---
 def generate_plot_from_df(df: pd.DataFrame, x_col: str, y_col: str, chart_type: str, title: str = "Visualization") -> BytesIO | None:
     # Configurable limits for plot categories
-    MAX_PIE_SLICES = 10  # Max slices before grouping into 'Others' for pie charts
-    MAX_BAR_CATEGORIES = 15 # Max categories to display on bar chart before considering truncation (less aggressive than pie)
+    MAX_PIE_SLICES = 10
+    MAX_BAR_CATEGORIES = 15
 
     if df.empty or x_col not in df.columns:
         return None
-    if y_col and y_col not in df.columns: # Y_col is optional for some chart types
-        y_col = None # Ensure y_col is None if it doesn't exist or is not needed
+    if y_col and y_col not in df.columns:
+        y_col = None
 
     sns.set_theme(style="whitegrid")
     fig, ax = plt.subplots(figsize=(10, 6))
     plot_generated = False
 
     try:
-        # Convert date-like columns for better plotting if needed
         cols_to_check = [c for c in [x_col, y_col] if c and c in df.columns]
         for col in cols_to_check:
             if any(k in col.lower() for k in ['date', 'time', 'month', 'year', 'dt']):
                 try:
                     df[col] = pd.to_datetime(df[col], errors='coerce')
                 except Exception:
-                    pass # Ignore if conversion fails
+                    pass
 
         if chart_type == 'bar':
             if y_col and pd.api.types.is_numeric_dtype(df[y_col]):
                 df_grouped = df.groupby(x_col)[y_col].sum().reset_index()
                 df_sorted = df_grouped.sort_values(by=y_col, ascending=False)
-
-                # Handle too many categories for bar chart
                 if len(df_sorted) > MAX_BAR_CATEGORIES:
                     df_display = df_sorted.head(MAX_BAR_CATEGORIES)
                     other_sum = df_sorted.iloc[MAX_BAR_CATEGORIES:][y_col].sum()
@@ -294,16 +261,13 @@ def generate_plot_from_df(df: pd.DataFrame, x_col: str, y_col: str, chart_type: 
                         df_display = pd.concat([df_display, pd.DataFrame({x_col: ['Others'], y_col: [other_sum]})])
                 else:
                     df_display = df_sorted
-
                 sns.barplot(x=df_display[x_col], y=df_display[y_col], ax=ax)
                 ax.set_ylabel(y_col.replace('_', ' ').title())
                 plot_generated = True
             elif pd.api.types.is_numeric_dtype(df[x_col]) and not y_col:
-                 # If only one numeric column, assume frequency distribution (like histogram but with bars for categories)
                 df_counts = df[x_col].value_counts().reset_index()
                 df_counts.columns = [x_col, 'Count']
                 df_counts_sorted = df_counts.sort_values(by='Count', ascending=False)
-
                 if len(df_counts_sorted) > MAX_BAR_CATEGORIES:
                     df_display = df_counts_sorted.head(MAX_BAR_CATEGORIES)
                     other_sum = df_counts_sorted.iloc[MAX_BAR_CATEGORIES:]['Count'].sum()
@@ -311,11 +275,9 @@ def generate_plot_from_df(df: pd.DataFrame, x_col: str, y_col: str, chart_type: 
                         df_display = pd.concat([df_display, pd.DataFrame({x_col: ['Others'], 'Count': [other_sum]})])
                 else:
                     df_display = df_counts_sorted
-
                 sns.barplot(x=df_display[x_col], y=df_display['Count'], ax=ax)
                 ax.set_ylabel('Count')
                 plot_generated = True
-
         elif chart_type == 'line':
             if y_col and pd.api.types.is_numeric_dtype(df[y_col]):
                 df_sorted = df.sort_values(by=x_col)
@@ -327,50 +289,40 @@ def generate_plot_from_df(df: pd.DataFrame, x_col: str, y_col: str, chart_type: 
                 sns.scatterplot(x=df[x_col], y=df[y_col], ax=ax)
                 ax.set_ylabel(y_col.replace('_', ' ').title())
                 plot_generated = True
-        elif chart_type == 'pie' and y_col: # Pie chart uses x_col for labels, y_col for values
+        elif chart_type == 'pie' and y_col:
             if pd.api.types.is_numeric_dtype(df[y_col]) and (df[y_col] >= 0).all():
                 pie_data = df.groupby(x_col)[y_col].sum().reset_index()
-                pie_data = pie_data.sort_values(by=y_col, ascending=False) # Sort for consistent "Others" grouping
-
-                # Implement "Top N + Others" for pie charts
+                pie_data = pie_data.sort_values(by=y_col, ascending=False)
                 if len(pie_data) > MAX_PIE_SLICES:
-                    top_n_data = pie_data.head(MAX_PIE_SLICES - 1) # One slice reserved for 'Others'
+                    top_n_data = pie_data.head(MAX_PIE_SLICES - 1)
                     other_sum = pie_data.iloc[MAX_PIE_SLICES - 1:][y_col].sum()
-                    
                     if other_sum > 0:
                         labels = top_n_data[x_col].tolist() + ['Others']
                         sizes = top_n_data[y_col].tolist() + [other_sum]
-                    else: # If sum of others is 0, just use top_n_data
+                    else:
                         labels = top_n_data[x_col].tolist()
                         sizes = top_n_data[y_col].tolist()
                 else:
                     labels = pie_data[x_col]
                     sizes = pie_data[y_col]
-                
-                # Check if all sizes are zero to prevent error
                 if sum(sizes) == 0:
                     plt.close(fig)
-                    return None # Cannot plot a pie chart with all zero values
-
-                # Autopct format for labels on slices
+                    return None
                 def autopct_format(pct):
-                    return ('%1.1f%%' % pct) if pct > 0 else '' # Only show percentage if greater than 0
-
-                # Wedgeprops to add some spacing between slices
+                    return ('%1.1f%%' % pct) if pct > 0 else ''
                 ax.pie(sizes, labels=labels, autopct=autopct_format, startangle=90, textprops={'fontsize': 9}, wedgeprops={'edgecolor': 'white', 'linewidth': 1})
-                ax.axis('equal') # Equal aspect ratio ensures that pie is drawn as a circle.
+                ax.axis('equal')
                 plot_generated = True
-        elif chart_type == 'histogram': # Histograms only need one column (x_col)
+        elif chart_type == 'histogram':
             if pd.api.types.is_numeric_dtype(df[x_col]):
                 sns.histplot(df[x_col], kde=True, ax=ax)
                 ax.set_ylabel('Frequency')
                 plot_generated = True
-        elif chart_type == 'countplot': # Count plots only need one categorical column (x_col)
+        elif chart_type == 'countplot':
             if pd.api.types.is_object_dtype(df[x_col]) or pd.api.types.is_categorical_dtype(df[x_col]):
                 df_counts = df[x_col].value_counts().reset_index()
                 df_counts.columns = [x_col, 'Count']
                 df_counts_sorted = df_counts.sort_values(by='Count', ascending=False)
-
                 if len(df_counts_sorted) > MAX_BAR_CATEGORIES:
                     df_display = df_counts_sorted.head(MAX_BAR_CATEGORIES)
                     other_sum = df_counts_sorted.iloc[MAX_BAR_CATEGORIES:]['Count'].sum()
@@ -378,7 +330,6 @@ def generate_plot_from_df(df: pd.DataFrame, x_col: str, y_col: str, chart_type: 
                         df_display = pd.concat([df_display, pd.DataFrame({x_col: ['Others'], 'Count': [other_sum]})])
                 else:
                     df_display = df_counts_sorted
-
                 sns.barplot(y=df_display[x_col], x=df_display['Count'], order=df_display[x_col], ax=ax)
                 ax.set_ylabel(x_col.replace('_', ' ').title())
                 ax.set_xlabel('Count')
@@ -387,28 +338,25 @@ def generate_plot_from_df(df: pd.DataFrame, x_col: str, y_col: str, chart_type: 
         if plot_generated:
             ax.set_title(title, fontsize=14)
             ax.set_xlabel(x_col.replace('_', ' ').title(), fontsize=12)
-            # Rotate X-axis labels for better readability, but only if they are not dates or numbers already handled by seaborn
             if chart_type in ['bar', 'countplot'] and (pd.api.types.is_object_dtype(df[x_col]) or pd.api.types.is_categorical_dtype(df[x_col])):
                 plt.xticks(rotation=45, ha='right', fontsize=10)
             else:
-                 plt.xticks(fontsize=10) # Keep default rotation for numeric/datetime if not bar/countplot
-            plt.yticks(fontsize=10) # Set fontsize for y-ticks too
+                plt.xticks(fontsize=10)
+            plt.yticks(fontsize=10)
             plt.tight_layout()
             return _save_plot_to_bytes(fig)
         else:
             plt.close(fig)
             return None
-
     except Exception as e:
         plt.close(fig)
-        st.error(f"Error generating plot: {e}") # Log error to Streamlit
+        st.error(f"Error generating plot: {e}")
         return None
 
 # --- get_document_answer function ---
 def get_document_answer(question: str, vectorstore: Chroma, llm: ChatVertexAI) -> str:
     if not vectorstore:
         return "Sorry, the document knowledge base is not set up correctly."
-
     qa_prompt_template = """
     You are a helpful assistant. Use only the following context to answer the question.
     and you have two documents so 2nd one is related to matrics Procuremnt Insights Mertics so if user is asking question related matrics then
@@ -418,16 +366,12 @@ def get_document_answer(question: str, vectorstore: Chroma, llm: ChatVertexAI) -
     you should show the description of that row
     If the answer isn't found in the context, say:
     "Sorry, I don't have enough information in the documents to answer that."
-
     Context:
     {context}
-
     Question: {question}
-
     Answer:
     """
     QA_CHAIN_PROMPT = PromptTemplate.from_template(qa_prompt_template)
-
     try:
         retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
         document_qa_chain = RetrievalQA.from_chain_type(
@@ -449,7 +393,6 @@ def get_database_answer(question: str, llm: ChatVertexAI, schema_guide: str) -> 
     plot_bytes = None
     database_response_text = ""
     generated_sql_display = None
-
     sql_prompt = PromptTemplate(
         input_variables=["question"],
         template=f"""
@@ -476,7 +419,6 @@ please always make the string comparison case-insensitive using UPPER(column) = 
 User Question: {{question}}
 """
     )
-
     retry_prompt = PromptTemplate(
         input_variables=["sql", "error_message"],
         template="""
@@ -530,8 +472,8 @@ This logic must be used inside AVG(), SUM(), or any other aggregation if the exp
 Never perform direct division without this condition, or BigQuery will throw an error.
 - While generating SQL queries, always use table aliases consistently throughout the query. Do not refer to full table names after assigning aliases. For example, if the DIL_SUPPLIERS_D table is aliased as sup, then use sup.VENDOR_NAME instead of DIL_SUPPLIERS_D.VENDOR_NAME in SELECT, JOIN, GROUP BY, and ORDER BY clauses.
 - ❌ [DB Chatbot] All attempts to fix the query failed: Reason: 400 POST [https://bigquery.googleapis.com/bigquery/v2/projects/vertex-ai-462816/queries?prettyPrint=false](https://bigquery.googleapis.com/bigquery/v2/projects/vertex-ai-462816/queries?prettyPrint=false): No matching signature for aggregate function SUM
-  Argument types: STRING
-  If you got such type of error then change string to float64 with help of cast function and try again to execute
+ Argument types: STRING
+ If you got such type of error then change string to float64 with help of cast function and try again to execute
 
 Ensure all queries run without type mismatch errors.
 Broken SQL:
@@ -541,141 +483,86 @@ Error Message:
 {error_message}
 """
     )
-
     try:
         prompt_text = sql_prompt.format(question=question)
         sql_query = llm.invoke(prompt_text).content.strip()
-
-        # Clean up unwanted markdown code blocks
         if "```" in sql_query:
             sql_query = sql_query.split("```")[1].replace("sql", "").strip()
-
         if "sorry" in sql_query.lower() or "not available" in sql_query.lower():
             database_response_text = "Sorry, I don't have enough data in the database to answer that specifically."
             return database_response_text, df, plot_bytes, None
-
-        # --- SQL Aliasing and Formatting ---
-        # 1. Remove any aliases LLM might have added initially (e.g., table AS alias)
         sql_query = re.sub(
             r'\b((?:\w+\.)?\w+)\s+AS\s+(\w+)(?=\s|,|$)',
-            lambda m: m.group(1), # Keep only the table name
+            lambda m: m.group(1),
             sql_query,
             flags=re.IGNORECASE
         )
-
         final_table_aliases = {}
-        # Pattern to find FROM/JOIN clauses and extract table name and potential alias
         table_alias_extraction_pattern = re.compile(
             r'(FROM|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+JOIN|JOIN)\s+(`?[\w.]+`?)\s*(?:AS\s+)?(\w+)?(?=\s|$)',
             re.IGNORECASE
         )
-
-        # First pass: Identify base table names and assign aliases
         for match in table_alias_extraction_pattern.finditer(sql_query):
             raw_table_name = match.group(2).strip('`')
             base_table_name = raw_table_name.split('.')[-1]
             default_alias = alias_map.get(base_table_name, base_table_name.lower())
-            if default_alias in reserved_keywords: # Prevent alias being a reserved keyword
+            if default_alias in reserved_keywords:
                 default_alias += "_t"
             final_table_aliases[base_table_name] = default_alias
-        
-        # Second pass: Replace full table paths with aliases
         def replace_table_with_alias(match):
             raw_table_name = match.group(2).strip('`')
             base_table_name = raw_table_name.split('.')[-1]
             full_table_path = f"{PROJECT_ID}.{DATASET_ID}.{base_table_name}"
             alias = final_table_aliases[base_table_name]
             return f"{match.group(1)} `{full_table_path}` {alias}"
-
         sql_query = table_alias_extraction_pattern.sub(replace_table_with_alias, sql_query)
-
-        # Third pass: Prepend aliases to column names
-        # This pattern looks for column names (word characters) optionally preceded by a dot
-        # that are NOT already preceded by an alias or full table path
         for base_table_name, alias in final_table_aliases.items():
-            # This regex needs to be more careful to only prepend aliases where necessary
-            # It targets column names that are not already aliased (e.g., `column_name` or `table.column_name`)
-            # and are present in the table
             column_ref_pattern = re.compile(
                 rf"(?<![\w.`'])(?!\b{re.escape(alias)}\.)(?:\b{re.escape(base_table_name)}\.|\b)(?P<column>\w+)\b",
                 re.IGNORECASE
             )
-            
-            # Use schema to check if column exists in table (more robust)
-            # For simplicity here, we assume if column name appears without alias, it belongs to this table
-            # A more robust solution would cross-reference with schema_yaml
-            
-            # Simple replacement for now, assumes no ambiguity unless already aliased
             sql_query = re.sub(column_ref_pattern, lambda m: f"{alias}.{m.group('column')}" if not m.group(0).startswith(f"{alias}.") else m.group(0), sql_query)
-
-        # Ensure "FROM project.dataset.table" is correctly aliased, even if not matched by group above
         for base_table, alias in final_table_aliases.items():
             full_path = f"{PROJECT_ID}.{DATASET_ID}.{base_table}"
-            # This covers cases where `project.dataset.table` might appear without an AS clause
             sql_query = re.sub(rf'`{re.escape(full_path)}`(?!\s+{re.escape(alias)}\b)', f'`{full_path}` {alias}', sql_query, flags=re.IGNORECASE)
-
-
         generated_sql_display = sqlparse.format(sql_query, reindent=True, keyword_case='upper')
-
         df = read_gbq(sql_query, project_id=PROJECT_ID)
-
         if df.empty:
             database_response_text += "No relevant data found for your query in the database."
             return database_response_text, df, plot_bytes, generated_sql_display
-
-        # Default plot generation logic (used for chat history)
         numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
         object_cols = df.select_dtypes(include='object').columns.tolist()
         datetime_cols = df.select_dtypes(include=['datetime64', 'datetime64[ns]']).columns.tolist()
-
-        default_x = None
-        default_y = None
-        default_chart_type = None
-
+        default_x, default_y, default_chart_type = None, None, None
         if len(datetime_cols) > 0 and len(numeric_cols) > 0:
-            default_x = datetime_cols[0]
-            default_y = numeric_cols[0]
-            default_chart_type = 'line'
+            default_x, default_y, default_chart_type = datetime_cols[0], numeric_cols[0], 'line'
         elif len(object_cols) > 0 and len(numeric_cols) > 0:
-            default_x = object_cols[0]
-            default_y = numeric_cols[0]
-            default_chart_type = 'bar'
+            default_x, default_y, default_chart_type = object_cols[0], numeric_cols[0], 'bar'
         elif len(numeric_cols) > 0:
-            default_x = numeric_cols[0]
-            default_chart_type = 'histogram'
+            default_x, default_chart_type = numeric_cols[0], 'histogram'
         elif len(object_cols) > 0:
-            default_x = object_cols[0]
-            default_chart_type = 'countplot'
-
+            default_x, default_chart_type = object_cols[0], 'countplot'
         if default_x and default_chart_type:
             plot_bytes = generate_plot_from_df(df.copy(), default_x, default_y, default_chart_type, title=question)
-
         if len(df.columns) == 1 and len(df) == 1:
             database_response_text = f"The {question.lower().replace('what is the ', '').replace('show me the ', '').replace('tell me the ', '')} is: **{df.iloc[0, 0]}**"
         else:
             database_response_text = f"Here are the key insights from the database:\n"
-
     except Exception as e:
         error_msg = str(e)
         database_response_text = f"An error occurred fetching data from the database: {error_msg}\n"
-
         needs_auto_cast_handling = (
             ("no matching signature for operator =" in error_msg.lower() and ("float64, string" in error_msg.lower() or "int64, string" in error_msg.lower()))
             or ("no matching signature for aggregate function sum" in error_msg.lower() and "string" in error_msg.lower())
         )
-
-        # Attempt auto-cast fix first
         if needs_auto_cast_handling:
             try:
                 cast_sql = auto_cast_fix(sql_query, error_msg)
                 generated_sql_display = sqlparse.format(cast_sql, reindent=True, keyword_case='upper')
-
                 df = read_gbq(cast_sql, project_id=PROJECT_ID)
-
                 if df.empty:
                     database_response_text += "No data found for your query in the database after auto-fix attempt."
                     return database_response_text, df, plot_bytes, generated_sql_display
-
                 numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
                 object_cols = df.select_dtypes(include='object').columns.tolist()
                 datetime_cols = df.select_dtypes(include=['datetime64', 'datetime64[ns]']).columns.tolist()
@@ -684,34 +571,25 @@ Error Message:
                 elif len(object_cols) > 0 and len(numeric_cols) > 0: default_x, default_y, default_chart_type = object_cols[0], numeric_cols[0], 'bar'
                 elif len(numeric_cols) > 0: default_x, default_chart_type = numeric_cols[0], 'histogram'
                 elif len(object_cols) > 0: default_x, default_chart_type = object_cols[0], 'countplot'
-
                 if default_x and default_chart_type:
                     plot_bytes = generate_plot_from_df(df.copy(), default_x, default_y, default_chart_type, title=question + " (Auto-Fixed)")
-
                 if len(df.columns) == 1 and len(df) == 1:
                     database_response_text = f"The {question.lower().replace('what is the ', '').replace('show me the ', '').replace('tell me the ', '')} is: **{df.iloc[0, 0]}** (auto-fixed)"
                 else:
                     database_response_text = f"Here are the results from the database (auto-fixed):\n"
                 return database_response_text, df, plot_bytes, generated_sql_display
-
             except Exception as e3:
                 database_response_text += f"Auto-cast retry failed: {e3}\n"
-        
-        # Then attempt LLM-based retry
         retry_sql_prompt = retry_prompt.format(sql=sql_query, error_message=error_msg)
         try:
             fixed_sql = llm.invoke(retry_sql_prompt).content.strip()
             if "```" in fixed_sql:
                 fixed_sql = fixed_sql.split("```")[1].replace("sql", "").strip()
-
             generated_sql_display = sqlparse.format(fixed_sql, reindent=True, keyword_case='upper')
-
             df = read_gbq(fixed_sql, project_id=PROJECT_ID)
-
             if df.empty:
                 database_response_text += "No data found for your query in the database after Gemini-fix attempt."
                 return database_response_text, df, plot_bytes, generated_sql_display
-
             numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
             object_cols = df.select_dtypes(include='object').columns.tolist()
             datetime_cols = df.select_dtypes(include=['datetime64', 'datetime64[ns]']).columns.tolist()
@@ -720,88 +598,67 @@ Error Message:
             elif len(object_cols) > 0 and len(numeric_cols) > 0: default_x, default_y, default_chart_type = object_cols[0], numeric_cols[0], 'bar'
             elif len(numeric_cols) > 0: default_x, default_chart_type = numeric_cols[0], 'histogram'
             elif len(object_cols) > 0: default_x, default_chart_type = object_cols[0], 'countplot'
-
             if default_x and default_chart_type:
                 plot_bytes = generate_plot_from_df(df.copy(), default_x, default_y, default_chart_type, title=question + " (Gemini-Fixed)")
-
             if len(df.columns) == 1 and len(df) == 1:
                 database_response_text = f"The {question.lower().replace('what is the ', '').replace('show me the ', '').replace('tell me the ', '')} is: **{df.iloc[0, 0]}** (Gemini-fixed)"
             else:
                 database_response_text = f"Here are the results from the database (Gemini-fixed):\n"
             return database_response_text, df, plot_bytes, generated_sql_display
-
         except Exception as e2:
             database_response_text += f"All attempts to fix the query failed: {e2}\n"
             database_response_text += "Please try rephrasing your question or check the schema definition."
             return database_response_text, df, plot_bytes, generated_sql_display
-            
     return database_response_text, df, plot_bytes, generated_sql_display
-
 
 # --- Main Chatbot Orchestration Function ---
 def process_user_question(question: str, doc_vectorstore: Chroma, llm_model: ChatVertexAI, schema_guide: str) -> dict:
     response_elements = {
         "text": "",
         "query_display": None,
-        "dataframe_display": None, # Kept for internal storage, but not displayed in chat bubbles
+        "dataframe_display": None,
         "plot_data_bytes": None,
-        "source_info": [] # To store details about where answers came from
+        "source_info": []
     }
-
     db_response_text, db_dataframe, db_plot_bytes, generated_sql = get_database_answer(question, llm_model, schema_guide)
     doc_answer_text = get_document_answer(question, doc_vectorstore, llm_model)
-
     final_response_text = ""
-    
-    # --- Combine Database and Document Answers ---
     if db_dataframe is not None and not db_dataframe.empty:
         final_response_text += f"**Database Insights:**\n{db_response_text}\n\n"
         response_elements["plot_data_bytes"] = db_plot_bytes
         response_elements["query_display"] = generated_sql
         response_elements["source_info"].append("database")
-        
-        # Store for dynamic visualization section (for the current query)
         st.session_state.last_db_df = db_dataframe
         st.session_state.last_db_query = generated_sql
-        st.session_state.last_db_plot_question = question # Store question for plot title
-        
-        # Reset plot controls to default for new query
+        st.session_state.last_db_plot_question = question
         st.session_state.plot_x_col = None
         st.session_state.plot_y_col = None
         st.session_state.plot_chart_type = None
     elif db_response_text and "Sorry, I don't have enough data" not in db_response_text:
-        # If DB query ran but returned no data or general error without specific "sorry"
         final_response_text += f"**Database Attempt:**\n{db_response_text}\n\n"
         response_elements["query_display"] = generated_sql
         response_elements["source_info"].append("database_attempt")
-        st.session_state.last_db_df = None # Ensure no stale data
+        st.session_state.last_db_df = None
         st.session_state.last_db_query = None
         st.session_state.last_db_plot_question = None
     else:
         final_response_text += "**Database Attempt:** No direct data found or an error occurred.\n\n"
         response_elements["query_display"] = generated_sql if generated_sql else "N/A"
-        st.session_state.last_db_df = None # Ensure no stale data
+        st.session_state.last_db_df = None
         st.session_state.last_db_query = None
         st.session_state.last_db_plot_question = None
-
 
     if "Sorry, I don't have enough information" not in doc_answer_text:
         final_response_text += f"**Document-Based Information:**\n{doc_answer_text}\n\n"
         response_elements["source_info"].append("document")
     else:
-        final_response_text += f"**Document-Based Information:** {doc_answer_text}\n\n" # Even if no info, state it.
+        final_response_text += f"**Document-Based Information:** {doc_answer_text}\n\n"
 
-    # Fallback if neither provides a substantial answer
     if not response_elements["source_info"]:
         final_response_text += "I couldn't find a direct answer from either the database or documents. Please try rephrasing your question or ask a question related to procurement insights."
         response_elements["source_info"].append("fallback")
-
-
     response_elements["text"] = final_response_text.strip()
-    # Store the actual dataframe in session state for dynamic plotting below the chat
-    # response_elements["dataframe_display"] is kept for consistency but won't be displayed in chat bubbles
     response_elements["dataframe_display"] = db_dataframe
-    
     return response_elements
 
 # --- Authentication Logic ---
@@ -809,7 +666,6 @@ def authenticate():
     st.sidebar.title("Login")
     username = st.sidebar.text_input("Username")
     password = st.sidebar.text_input("Password", type="password")
-
     if st.sidebar.button("Login"):
         if username == "DILPYTHONPRO" and password == "UTechBot":
             st.session_state.authenticated = True
@@ -821,111 +677,73 @@ def authenticate():
 st.title("📊 PROCUREMENT INSIGHTS CHATBOT")
 st.markdown("---")
 
-
-# Main application logic for authenticated users
 if not st.session_state.authenticated:
     authenticate()
 else:
     st.sidebar.success("Logged in as DILPYTHONPRO")
     if st.sidebar.button("Logout"):
         st.session_state.authenticated = False
-        st.session_state.messages = [] # Clear chat on logout
-        st.session_state.last_db_df = None # Clear current data on logout
+        st.session_state.messages = []
+        st.session_state.last_db_df = None
         st.session_state.last_db_query = None
         st.session_state.plot_x_col = None
         st.session_state.plot_y_col = None
         st.session_state.plot_chart_type = None
         st.rerun()
 
-    # Display chat messages from history on app rerun
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             if message["role"] == "assistant":
-                # Removed: st.dataframe(message["dataframe_display"].head(5))
-                
-                # Display Plot for history (default generated plot)
                 if message["plot_data_bytes"] is not None:
                     st.markdown("Associated Plot:")
                     st.image(message["plot_data_bytes"], use_column_width=True)
-                # Display Query/Details in an expander for history
                 if message["query_display"] is not None:
                     with st.expander("View Query/Details"):
-                        # Heuristic to guess if it's SQL for syntax highlighting
                         lang = "sql" if "SELECT" in message["query_display"].upper() and "FROM" in message["query_display"].upper() else "markdown"
                         st.code(message["query_display"], language=lang)
-
-
-    # React to user input
     if prompt := st.chat_input("Ask your question about procurement (e.g., 'What is the total value of approved purchase orders last month?' or 'What is the overview of the solution?'):"):
         with st.chat_message("user"):
             st.markdown(prompt)
-        # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
-
-        # Get chatbot response
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 response_elements = process_user_question(prompt, vectorstore, llm, SCHEMA_GUIDE)
-                
-                # Display the main text response in the current chat bubble
                 st.markdown(response_elements["text"])
-
-                # Display Plot in current chat bubble (if available)
                 if response_elements["plot_data_bytes"] is not None:
                     st.markdown("Associated Plot:")
                     st.image(response_elements["plot_data_bytes"], use_column_width=True)
-
-                # Display Query in current chat bubble (if available)
                 if response_elements["query_display"] is not None:
                     with st.expander("View Query/Details"):
                         lang = "sql" if "SELECT" in response_elements["query_display"].upper() and "FROM" in response_elements["query_display"].upper() else "markdown"
                         st.code(response_elements["query_display"], language=lang)
-
-            # Store the full response elements to chat history for redraw on rerun
-            # dataframe_display is stored, but not explicitly rendered in chat bubbles
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": response_elements["text"],
-                "dataframe_display": response_elements["dataframe_display"], # Still store for dynamic section below
+                "dataframe_display": response_elements["dataframe_display"],
                 "plot_data_bytes": response_elements["plot_data_bytes"],
                 "query_display": response_elements["query_display"]
             })
-        # Important: Rerun the script to ensure the "Current Query Results" section updates
-        # and new selectbox states are picked up correctly for dynamic plotting.
         st.rerun()
-
-
-    # --- Dedicated Section for Current Query Results and Dynamic Visualization ---
-    # This section appears below the chat messages and updates dynamically with the last query's data
     if st.session_state.last_db_df is not None and not st.session_state.last_db_df.empty:
         st.markdown("---")
         st.markdown("### 📊 Current Query Results & Dynamic Visualization")
-
-        # Display the full DataFrame
         st.markdown("#### Raw Query Results:")
         st.dataframe(st.session_state.last_db_df, use_container_width=True)
-
-        # Show SQL query in expander
         if st.session_state.last_db_query:
             with st.expander("View Executed SQL Query"):
                 st.code(st.session_state.last_db_query, language="sql")
-            
         st.markdown("#### Dynamic Visualization Options:")
-
         df_for_plot = st.session_state.last_db_df
-        available_columns = [""] + df_for_plot.columns.tolist() # Add empty option for selectbox
+        available_columns = [""] + df_for_plot.columns.tolist()
         chart_types = ["", "bar", "line", "pie", "scatter", "histogram", "countplot"]
-
-        # Layout select boxes in columns
         col1, col2, col3 = st.columns(3)
-
         with col1:
             default_x_index = 0
             if st.session_state.plot_x_col and st.session_state.plot_x_col in available_columns:
                 default_x_index = available_columns.index(st.session_state.plot_x_col)
             st.session_state.plot_x_col = st.selectbox(
-                "Select X-axis", 
+                "Select X-axis",
                 options=available_columns,
                 index=default_x_index,
                 key="x_axis_select"
@@ -935,7 +753,7 @@ else:
             if st.session_state.plot_y_col and st.session_state.plot_y_col in available_columns:
                 default_y_index = available_columns.index(st.session_state.plot_y_col)
             st.session_state.plot_y_col = st.selectbox(
-                "Select Y-axis", 
+                "Select Y-axis",
                 options=available_columns,
                 index=default_y_index,
                 key="y_axis_select"
@@ -945,19 +763,17 @@ else:
             if st.session_state.plot_chart_type and st.session_state.plot_chart_type in chart_types:
                 default_chart_index = chart_types.index(st.session_state.plot_chart_type)
             st.session_state.plot_chart_type = st.selectbox(
-                "Select Chart Type", 
+                "Select Chart Type",
                 options=chart_types,
                 index=default_chart_index,
                 key="chart_type_select"
             )
-
-        # Generate and display the dynamic plot based on user selections
         if st.session_state.plot_chart_type and st.session_state.plot_x_col:
             plot_title = st.session_state.last_db_plot_question if st.session_state.last_db_plot_question else "Dynamic Plot"
             current_plot_bytes = generate_plot_from_df(
-                df_for_plot, 
-                st.session_state.plot_x_col, 
-                st.session_state.plot_y_col, # Pass Y-axis even if not used by all chart types
+                df_for_plot,
+                st.session_state.plot_x_col,
+                st.session_state.plot_y_col,
                 st.session_state.plot_chart_type,
                 title=plot_title
             )
@@ -967,6 +783,5 @@ else:
                 st.warning(f"Could not generate {st.session_state.plot_chart_type} chart with selected columns. Please check column types and chart compatibility.")
         else:
             st.info("Select X-axis, Y-axis (if applicable), and Chart Type to generate a custom plot.")
-
     st.markdown("---")
     st.caption("Powered by Google Vertex AI & Streamlit")
