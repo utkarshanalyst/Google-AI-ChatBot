@@ -103,7 +103,7 @@ credentials = service_account.Credentials.from_service_account_info(service_acco
 
 # 3️⃣ (Optional) Agar library ko GOOGLE_APPLICATION_CREDENTIALS chahiye
 with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
-    json.dump(service_account_info, f)
+    json.dump(dict(service_account_info), f)
     temp_path = f.name
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
