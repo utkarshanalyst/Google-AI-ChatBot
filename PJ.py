@@ -66,9 +66,8 @@ import streamlit as st
 # Load service account from secrets (Cloud) OR local file (Dev)
 if "GCP_SERVICE_ACCOUNT" in st.secrets:
     # Cloud: read from Secrets (multiline JSON)
-    service_account_info = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
-    # Fix for private_key newlines
-    service_account_info["private_key"] = service_account_info["private_key"].replace("\\n", "\n")
+    service_account_info = st.secrets["GCP_SERVICE_ACCOUNT"]
+   
 
     # Optional: if any lib relies on GOOGLE_APPLICATION_CREDENTIALS, write to /tmp
     with open("/tmp/gcp_key.json", "w") as f:
