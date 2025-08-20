@@ -43,27 +43,34 @@ if "plot_chart_type" not in st.session_state:
 
 # --- 🔐 Global Configurations and Secret Handling ---
 # --- 🔐 Global Configurations and Secret Handling ---
+# --- 🔐 Global Configurations and Secret Handling ---
 temp_path = None
 try:
     if "gcp_service_account" in st.secrets:
-        # Cloud: read from Secrets (TOML table is loaded as a dict)
+        # Load the service account info
         service_account_info = dict(st.secrets["gcp_service_account"])
         
-        # --- THE FIX IS HERE ---
-        # Encode the private key string to bytes, which the library requires.
-        if "private_key" in service_account_info:
-            service_account_info["private_key"] = service_account_info["private_key"].encode("utf-8")
+        # We need two versions of the key:
+        # 1. Bytes for google.oauth2.Credentials
+        # 2. String for the temporary JSON file
+        encoded_private_key = service_account_info["private_key"].encode("utf-8")
         
-        # Write to a temporary file for libraries that need GOOGLE_APPLICATION_CREDENTIALS
+        # Create a copy of the dictionary to modify for the JSON file
+        json_dumpable_info = service_account_info.copy()
+        json_dumpable_info["private_key"] = encoded_private_key.decode("utf-8")
+        
+        # Write the string version to a temporary file
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
-            json.dump(service_account_info, f)
+            json.dump(json_dumpable_info, f)
             temp_path = f.name
+        
+        # Set the environment variable to point to the temporary file
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
         
-        # Create credentials object
+        # Use the original dictionary with the bytes key to create credentials
         credentials = service_account.Credentials.from_service_account_info(service_account_info)
     else:
-        # Local dev fallback: point to your downloaded JSON file path
+        # Local dev fallback
         st.warning("Running in local mode. Ensure 'vertex-ai-462816-c5f33c6dc69a.json' is available.")
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "vertex-ai-462816-c5f33c6dc69a.json"
         credentials = None
