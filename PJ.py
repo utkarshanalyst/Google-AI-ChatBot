@@ -42,36 +42,41 @@ if "plot_chart_type" not in st.session_state:
     st.session_state.plot_chart_type = None
 
 # --- 🔐 Global Configurations and Secret Handling ---
-# --- 🔐 Global Configurations and Secret Handling ---
-# --- 🔐 Global Configurations and Secret Handling ---
-# --- 🔐 Global Configurations and Secret Handling ---
+
 temp_path = None
 try:
     if "gcp_service_account" in st.secrets:
-        # Load the service account info
+        # 1. Streamlit के secrets.toml से Service Account Info को Load करें।
+        #    यह अभी Dict में है।
         service_account_info = dict(st.secrets["gcp_service_account"])
         
-        # We need two versions of the key:
-        # 1. Bytes for google.oauth2.Credentials
-        # 2. String for the temporary JSON file
-        encoded_private_key = service_account_info["private_key"].encode("utf-8")
+        # 2. Private Key को String Format में रखें (यह TOML से ऐसे ही आती है)।
+        #    हमें इसे JSON File में लिखना है, इसलिए यह String ही होनी चाहिए।
+        private_key_str = service_account_info["private_key"]
         
-        # Create a copy of the dictionary to modify for the JSON file
+        # 3. Private Key को Bytes Format में Encode करें।
+        #    Google की Authentication Library को यही Format चाहिए।
+        service_account_info["private_key"] = private_key_str.encode("utf-8")
+        
+        # 4. अब एक Temporary File बनाएँ ताकि GOOGLE_APPLICATION_CREDENTIALS
+        #    Environment Variable को एक File Path मिल सके।
+        #    यहाँ हम JSON File में String Version का इस्तेमाल करेंगे।
+        #    File को JSON में लिखने से पहले, Private Key को String में बदलना ज़रूरी है।
         json_dumpable_info = service_account_info.copy()
-        json_dumpable_info["private_key"] = encoded_private_key.decode("utf-8")
+        json_dumpable_info["private_key"] = private_key_str
         
-        # Write the string version to a temporary file
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
             json.dump(json_dumpable_info, f)
             temp_path = f.name
         
-        # Set the environment variable to point to the temporary file
+        # 5. Environment Variable को Temporary File Path पर Set करें।
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
         
-        # Use the original dictionary with the bytes key to create credentials
+        # 6. अब, Credentials Object बनाएँ।
+        #    यह Library `service_account_info` के अंदर Bytes Format की Key का इस्तेमाल करेगी।
         credentials = service_account.Credentials.from_service_account_info(service_account_info)
     else:
-        # Local dev fallback
+        # Local Development के लिए Fallback Code।
         st.warning("Running in local mode. Ensure 'vertex-ai-462816-c5f33c6dc69a.json' is available.")
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "vertex-ai-462816-c5f33c6dc69a.json"
         credentials = None
