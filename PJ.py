@@ -42,24 +42,34 @@ if "plot_chart_type" not in st.session_state:
     st.session_state.plot_chart_type = None
 
 # --- 🔐 Global Configurations and Secret Handling ---
-# Use consistent key: `gcp_service_account` for Streamlit Secrets
-if "gcp_service_account" in st.secrets:
-    # Cloud: read from Secrets (TOML table is loaded as a dict)
-    service_account_info = st.secrets["gcp_service_account"]
-    
-    # Write to a temporary file for libraries that need GOOGLE_APPLICATION_CREDENTIALS
-    with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
-        json.dump(dict(service_account_info), f)
-        temp_path = f.name
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
-    
-    # Create credentials object
-    credentials = service_account.Credentials.from_service_account_info(service_account_info)
-else:
-    # Local dev fallback: point to your downloaded JSON file path
-    st.warning("Running in local mode. Ensure 'vertex-ai-462816-c5f33c6dc69a.json' is available.")
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "vertex-ai-462816-c5f33c6dc69a.json"
-    credentials = None
+# --- 🔐 Global Configurations and Secret Handling ---
+temp_path = None
+try:
+    if "gcp_service_account" in st.secrets:
+        # Cloud: read from Secrets (TOML table is loaded as a dict)
+        service_account_info = dict(st.secrets["gcp_service_account"])
+        
+        # --- THE FIX IS HERE ---
+        # Encode the private key string to bytes, which the library requires.
+        if "private_key" in service_account_info:
+            service_account_info["private_key"] = service_account_info["private_key"].encode("utf-8")
+        
+        # Write to a temporary file for libraries that need GOOGLE_APPLICATION_CREDENTIALS
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            json.dump(service_account_info, f)
+            temp_path = f.name
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
+        
+        # Create credentials object
+        credentials = service_account.Credentials.from_service_account_info(service_account_info)
+    else:
+        # Local dev fallback: point to your downloaded JSON file path
+        st.warning("Running in local mode. Ensure 'vertex-ai-462816-c5f33c6dc69a.json' is available.")
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "vertex-ai-462816-c5f33c6dc69a.json"
+        credentials = None
+finally:
+    if temp_path and os.path.exists(temp_path):
+        os.remove(temp_path)
 
 PROJECT_ID = "vertex-ai-462816"
 LOCATION   = "us-central1"
